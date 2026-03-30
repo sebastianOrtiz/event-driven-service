@@ -1,7 +1,7 @@
-# Binaries
+# Binaries (only root-level compiled output, not cmd/ source dirs)
 bin/
-api
-worker
+/api
+/worker
 *.exe
 
 # Vendor (if used)
