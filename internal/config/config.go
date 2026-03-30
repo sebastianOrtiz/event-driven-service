@@ -9,6 +9,7 @@ import (
 // Config holds all configuration values for the service.
 type Config struct {
 	RedisURL      string
+	RedisPassword string
 	DatabaseURL   string
 	HTTPPort      string
 	DBSchema      string
@@ -22,6 +23,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		RedisURL:      getEnv("REDIS_URL", "redis:6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 		DatabaseURL:   getEnv("DATABASE_URL", "postgres://sebasing:devpassword@localhost:5432/sebasing_dev?sslmode=disable"),
 		HTTPPort:      getEnv("HTTP_PORT", "8081"),
 		DBSchema:      getEnv("DB_SCHEMA", "events"),

@@ -48,7 +48,8 @@ func main() {
 
 	// Connect to Redis.
 	rdb := redis.NewClient(&redis.Options{
-		Addr: cfg.RedisURL,
+		Addr:     cfg.RedisURL,
+		Password: cfg.RedisPassword,
 	})
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		slog.Error("failed to connect to Redis", "error", err)
