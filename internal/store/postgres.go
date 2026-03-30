@@ -37,6 +37,74 @@ func (s *PostgresStore) CreateFlow(ctx context.Context, flow *models.OnboardingF
 	return err
 }
 
+// ListFlows returns all onboarding flows ordered by creation time (newest first).
+func (s *PostgresStore) ListFlows(ctx context.Context, limit int) ([]models.OnboardingFlow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := fmt.Sprintf(`
+		SELECT id, correlation_id, user_email, status, started_at, completed_at, created_at
+		FROM %s.onboarding_flows
+		ORDER BY created_at DESC
+		LIMIT $1
+	`, s.schema)
+
+	rows, err := s.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var flows []models.OnboardingFlow
+	for rows.Next() {
+		var f models.OnboardingFlow
+		if err := rows.Scan(
+			&f.ID, &f.CorrelationID, &f.UserEmail,
+			&f.Status, &f.StartedAt, &f.CompletedAt, &f.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		flows = append(flows, f)
+	}
+	return flows, rows.Err()
+}
+
+// ListAllEvents returns all events across all flows ordered by creation time (newest first).
+func (s *PostgresStore) ListAllEvents(ctx context.Context, limit int) ([]models.OnboardingEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	query := fmt.Sprintf(`
+		SELECT e.id, e.flow_id, e.event_type, e.payload, e.status,
+		       e.error_message, e.retry_count, e.created_at, e.processed_at
+		FROM %s.onboarding_events e
+		ORDER BY e.created_at DESC
+		LIMIT $1
+	`, s.schema)
+
+	rows, err := s.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []models.OnboardingEvent
+	for rows.Next() {
+		var evt models.OnboardingEvent
+		var payload json.RawMessage
+		if err := rows.Scan(
+			&evt.ID, &evt.FlowID, &evt.EventType,
+			&payload, &evt.Status, &evt.ErrorMessage,
+			&evt.RetryCount, &evt.CreatedAt, &evt.ProcessedAt,
+		); err != nil {
+			return nil, err
+		}
+		evt.Payload = payload
+		events = append(events, evt)
+	}
+	return events, rows.Err()
+}
+
 // GetFlowByCorrelationID retrieves a flow by its correlation ID.
 func (s *PostgresStore) GetFlowByCorrelationID(ctx context.Context, correlationID uuid.UUID) (*models.OnboardingFlow, error) {
 	query := fmt.Sprintf(`
