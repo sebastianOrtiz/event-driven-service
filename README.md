@@ -1,214 +1,95 @@
 # Event-Driven Onboarding Service
 
-Servicio de onboarding basado en eventos que demuestra arquitectura event-driven usando **Go**, **Redis Streams** y **PostgreSQL**.
+Event-driven onboarding service that demonstrates asynchronous event processing using Go, Gin, Redis Streams, and PostgreSQL. When a user registers in NexusCRM, this service processes a 4-step onboarding flow.
 
-## Arquitectura
+## Stack
 
-Cuando un usuario se registra en NexusCRM, este servicio procesa un flujo de onboarding asincrono con 4 pasos secuenciales:
+| Layer | Technology |
+|---|---|
+| Language | Go 1.23 |
+| HTTP | Gin |
+| Messaging | Redis Streams (consumer groups) |
+| Persistence | PostgreSQL 16 (schema: `events`) |
+| Driver | pgx/v5 |
+| Redis client | go-redis/v9 |
+| Logging | log/slog (structured JSON) |
+
+## Architecture
+
+The service runs as two processes: an HTTP API and a worker. The worker spawns 4 goroutines, each consuming from a Redis Stream and producing the next event in the chain.
 
 ```
 user.registered
     |
     v
-[Worker 1: Verify Email]
+[Worker 1: Verify Email] --> email.verified
     |
     v
-email.verified
+[Worker 2: Create Organization] --> organization.created
     |
     v
-[Worker 2: Create Organization]
+[Worker 3: Provision Demo Data] --> demo_data.provisioned
     |
     v
-organization.created
-    |
-    v
-[Worker 3: Provision Demo Data]
-    |
-    v
-demo_data.provisioned
-    |
-    v
-[Worker 4: Send Welcome Email]
-    |
-    v
-onboarding.completed
+[Worker 4: Send Welcome Email] --> onboarding.completed
 ```
 
-Cada paso es un **worker** que consume de un Redis Stream, procesa el evento, lo registra en PostgreSQL (event store) y publica el siguiente evento en la cadena.
-
-## Stack
-
-| Componente | Tecnologia |
-|---|---|
-| Lenguaje | Go 1.23 |
-| Mensajeria | Redis Streams |
-| Persistencia | PostgreSQL 16 (schema `events`) |
-| Driver DB | pgx/v5 |
-| Cliente Redis | go-redis/v9 |
-| Logging | log/slog (JSON estructurado) |
-| HTTP | net/http (sin frameworks) |
-
-## Estructura del proyecto
-
-```
-event-driven-service/
-├── cmd/
-│   ├── api/main.go           # HTTP API
-│   └── worker/main.go        # Worker (4 goroutines)
-├── internal/
-│   ├── config/               # Configuracion desde env vars
-│   ├── events/               # Tipos y constantes de eventos
-│   ├── models/               # Modelos de dominio
-│   ├── store/                # PostgreSQL event store
-│   ├── publisher/            # Publicacion a Redis Streams
-│   ├── consumer/             # Consumer groups con reintentos
-│   ├── handlers/             # Logica de cada paso del onboarding
-│   └── api/                  # Rutas y handlers HTTP
-├── Dockerfile                # Multi-stage build
-└── go.mod
-```
-
-## Configuracion
-
-Variables de entorno con valores por defecto:
-
-| Variable | Default | Descripcion |
-|---|---|---|
-| `REDIS_URL` | `localhost:6379` | Direccion del servidor Redis |
-| `DATABASE_URL` | `postgres://sebasing:devpassword@localhost:5432/sebasing_dev?sslmode=disable` | Connection string PostgreSQL |
-| `HTTP_PORT` | `8081` | Puerto del servidor HTTP |
-| `DB_SCHEMA` | `events` | Schema de PostgreSQL |
-| `MAX_RETRIES` | `3` | Reintentos maximos por evento |
-| `RETRY_BACKOFF_MS` | `1000` | Backoff base en milisegundos |
-| `CONSUMER_GROUP` | `onboarding-workers` | Nombre del consumer group |
-
-## Como ejecutar
-
-### Requisitos
-
-- Go 1.23+
-- PostgreSQL 16
-- Redis 7
-
-### Build
-
-```bash
-go build -o bin/api ./cmd/api
-go build -o bin/worker ./cmd/worker
-```
-
-### Ejecutar
-
-```bash
-# Terminal 1: API
-./bin/api
-
-# Terminal 2: Workers
-./bin/worker
-```
-
-### Docker
-
-```bash
-# Build
-docker build -t event-driven-service .
-
-# API
-docker run -p 8081:8081 event-driven-service api
-
-# Workers
-docker run event-driven-service worker
-```
+Each worker is idempotent, uses a correlation ID for end-to-end tracing, and supports retries with exponential backoff. All events are persisted in PostgreSQL as an event store.
 
 ## API Endpoints
 
-### Health Check
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check (Redis + PostgreSQL) |
+| `POST` | `/api/v1/onboarding/trigger` | Start an onboarding flow |
+| `GET` | `/api/v1/onboarding/:id` | Get flow status |
+| `GET` | `/api/v1/onboarding/:id/events` | Get all events for a flow |
 
-```
-GET /health
-```
+All endpoints require an `X-API-Key` header for authentication.
 
-Respuesta:
-```json
-{
-  "status": "ok",
-  "redis": "connected",
-  "postgres": "connected"
-}
-```
+## Running
 
-### Trigger Onboarding
+```bash
+# Terminal 1: API (port 8081)
+go run ./cmd/api
 
-```
-POST /api/v1/onboarding/trigger
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "name": "John Doe",
-  "orgName": "Acme Inc"
-}
+# Terminal 2: Workers
+go run ./cmd/worker
 ```
 
-Respuesta (202 Accepted):
-```json
-{
-  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending",
-  "message": "onboarding flow started"
-}
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `REDIS_URL` | `localhost:6379` | Redis server address |
+| `DATABASE_URL` | `postgres://sebasing:devpassword@localhost:5432/sebasing_dev?sslmode=disable` | PostgreSQL connection |
+| `HTTP_PORT` | `8081` | HTTP server port |
+| `DB_SCHEMA` | `events` | PostgreSQL schema |
+| `MAX_RETRIES` | `3` | Max retries per event |
+| `API_KEY` | — | Required API key for authentication |
+
+## Integration with NexusCRM
+
+The CRM API calls `POST /api/v1/onboarding/trigger` with an `X-API-Key` header when a user registers. The CRM dashboard reads onboarding status via the CRM API's proxy endpoints (`/api/v1/events/*`).
+
+## Tests
+
+37 tests.
+
+```bash
+go test ./...
 ```
 
-### Get Flow Status
+## Part of sebasing.dev
 
-```
-GET /api/v1/onboarding/{correlation_id}
-```
+| Project | Stack |
+|---|---|
+| [portfolio-web](../portfolio-web) | Next.js, TypeScript, Tailwind |
+| [nexus-crm-api](../nexus-crm-api) | FastAPI, SQLAlchemy, PostgreSQL |
+| [nexus-crm-dashboard](../nexus-crm-dashboard) | Angular, TypeScript, Tailwind |
+| **event-driven-service** (this) | Go, Gin, Redis Streams |
+| [semantic-search-api](../semantic-search-api) | FastAPI, ChromaDB, sentence-transformers |
 
-Respuesta:
-```json
-{
-  "id": "...",
-  "correlationId": "...",
-  "userEmail": "user@example.com",
-  "status": "completed",
-  "startedAt": "2024-01-01T00:00:00Z",
-  "completedAt": "2024-01-01T00:00:05Z",
-  "createdAt": "2024-01-01T00:00:00Z"
-}
-```
+## License
 
-### Get Flow Events
-
-```
-GET /api/v1/onboarding/{correlation_id}/events
-```
-
-Respuesta:
-```json
-{
-  "correlationId": "...",
-  "events": [
-    {
-      "id": "...",
-      "flowId": "...",
-      "eventType": "user.registered",
-      "payload": {...},
-      "status": "completed",
-      "retryCount": 0,
-      "createdAt": "...",
-      "processedAt": "..."
-    }
-  ]
-}
-```
-
-## Decisiones tecnicas
-
-- **Sin frameworks HTTP**: Solo `net/http` estandar para mantener dependencias minimas
-- **Idempotencia**: Cada handler verifica si el evento ya fue procesado antes de actuar
-- **Correlation ID**: UUID unico por flujo para trazabilidad end-to-end
-- **Reintentos con backoff exponencial**: Hasta `MAX_RETRIES` intentos con backoff `base * 2^attempt`
-- **Graceful shutdown**: Captura SIGINT/SIGTERM y espera que los workers terminen
-- **Event store**: Todos los eventos se persisten en PostgreSQL para auditoria
-- **Consumer groups**: Cada tipo de worker usa Redis consumer groups para procesamiento distribuido
+MIT
