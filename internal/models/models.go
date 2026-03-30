@@ -21,15 +21,15 @@ type OnboardingFlow struct {
 
 // OnboardingEvent represents a single event within an onboarding flow.
 type OnboardingEvent struct {
-	ID           uuid.UUID        `json:"id"`
-	FlowID       uuid.UUID        `json:"flowId"`
-	EventType    string           `json:"eventType"`
-	Payload      json.RawMessage  `json:"payload"`
-	Status       string           `json:"status"` // pending, processing, completed, failed
-	ErrorMessage *string          `json:"errorMessage,omitempty"`
-	RetryCount   int              `json:"retryCount"`
-	CreatedAt    time.Time        `json:"createdAt"`
-	ProcessedAt  *time.Time       `json:"processedAt,omitempty"`
+	ID           uuid.UUID       `json:"id"`
+	FlowID       uuid.UUID       `json:"flowId"`
+	EventType    string          `json:"eventType"`
+	Payload      json.RawMessage `json:"payload"`
+	Status       string          `json:"status"` // pending, processing, completed, failed
+	ErrorMessage *string         `json:"errorMessage,omitempty"`
+	RetryCount   int             `json:"retryCount"`
+	CreatedAt    time.Time       `json:"createdAt"`
+	ProcessedAt  *time.Time      `json:"processedAt,omitempty"`
 }
 
 // Flow statuses.

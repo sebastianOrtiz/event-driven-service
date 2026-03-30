@@ -20,13 +20,13 @@ type HandlerFunc func(ctx context.Context, payload events.EventPayload) error
 
 // Consumer reads from a Redis Stream using consumer groups.
 type Consumer struct {
-	client        *redis.Client
-	group         string
-	consumerName  string
-	stream        string
-	handler       HandlerFunc
-	maxRetries    int
-	retryBackoff  int // base backoff in milliseconds
+	client       *redis.Client
+	group        string
+	consumerName string
+	stream       string
+	handler      HandlerFunc
+	maxRetries   int
+	retryBackoff int // base backoff in milliseconds
 }
 
 // New creates a new Consumer for the given stream and event type.
