@@ -15,6 +15,7 @@ type Config struct {
 	MaxRetries    int
 	RetryBackoff  int // milliseconds
 	ConsumerGroup string
+	APIKey        string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -27,6 +28,7 @@ func Load() *Config {
 		MaxRetries:    getEnvInt("MAX_RETRIES", 3),
 		RetryBackoff:  getEnvInt("RETRY_BACKOFF_MS", 1000),
 		ConsumerGroup: getEnv("CONSUMER_GROUP", "onboarding-workers"),
+		APIKey:        getEnv("API_KEY", "nexus-events-dev-key-2026"),
 	}
 }
 
