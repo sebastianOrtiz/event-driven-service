@@ -21,7 +21,7 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	return &Config{
-		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
+		RedisURL:      getEnv("REDIS_URL", "redis:6379"),
 		DatabaseURL:   getEnv("DATABASE_URL", "postgres://sebasing:devpassword@localhost:5432/sebasing_dev?sslmode=disable"),
 		HTTPPort:      getEnv("HTTP_PORT", "8081"),
 		DBSchema:      getEnv("DB_SCHEMA", "events"),
